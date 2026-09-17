@@ -5,7 +5,6 @@ import re
 from pathlib import Path
 
 import fitz
-import httpx
 from bs4 import BeautifulSoup
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from sentence_transformers import SentenceTransformer
@@ -79,16 +78,6 @@ def extract_html_text(html_path: str | Path) -> str:
     return re.sub(r"\n{3,}", "\n\n", text)
 
 
-def extract_webpage_text(url: str) -> str:
-    response = httpx.get(url, timeout=20)
-    response.raise_for_status()
-    soup = BeautifulSoup(response.text, "html.parser")
-    for tag in soup(["script", "style", "noscript"]):
-        tag.decompose()
-    text = soup.get_text(separator="\n", strip=True)
-    return re.sub(r"\n{3,}", "\n\n", text)
-
-
 def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, chunk_overlap: int = CHUNK_OVERLAP) -> list[str]:
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
@@ -102,17 +91,12 @@ def build_chunks_from_metadata(metadata: dict[str, str], source_root: Path | Non
     source_root = source_root or DATA_DIR
     local_file = source_root / "pdfs" / metadata.get("local_file_name", "")
     if not local_file.exists():
-        if metadata.get("doc_type", "").lower() in {"pdf"}:
-            return []
-        try:
-            text = extract_webpage_text(metadata["url"])
-        except Exception:
-            return []
+        return []
+
+    if metadata.get("doc_type", "").lower() in {"pdf"}:
+        text = extract_pdf_text(local_file)
     else:
-        if metadata.get("doc_type", "").lower() in {"pdf"}:
-            text = extract_pdf_text(local_file)
-        else:
-            text = extract_html_text(local_file)
+        text = extract_html_text(local_file)
 
     chunks = chunk_text(text)
     records: list[dict[str, str]] = []

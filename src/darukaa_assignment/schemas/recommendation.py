@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import List
-
 from pydantic import BaseModel, Field
 
 
@@ -16,9 +14,9 @@ class SourceInfo(BaseModel):
 class Recommendation(BaseModel):
     recommendation: str
     mechanism: str
-    impacted_metrics: List[str]
+    impacted_metrics: list[str]
     expected_change: str
     time_horizon: str
     confidence: str
     source: SourceInfo
-    supporting_sources: List[SourceInfo] = Field(default_factory=list)
+    supporting_sources: list[SourceInfo] = Field(default_factory=list)
