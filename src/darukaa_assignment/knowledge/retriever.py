@@ -47,6 +47,7 @@ class MultiDocumentRetriever:
                     "source_org": metadata.get("source_org", "unknown"),
                     "url": metadata.get("url", ""),
                     "year": metadata.get("year", ""),
+                    "domain": metadata.get("domain", ""),
                     "matches": [],
                 },
             )
