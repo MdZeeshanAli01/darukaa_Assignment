@@ -4,13 +4,19 @@ import json
 import re
 from pathlib import Path
 
-import httpx
 import fitz
+import httpx
 from bs4 import BeautifulSoup
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from sentence_transformers import SentenceTransformer
 
-from darukaa_assignment.config import CHUNK_OVERLAP, CHUNK_SIZE, MODEL_NAME, VECTOR_COLLECTION_NAME, VECTOR_DB_PATH
+from darukaa_assignment.config import (
+    CHUNK_OVERLAP,
+    CHUNK_SIZE,
+    MODEL_NAME,
+    VECTOR_COLLECTION_NAME,
+    VECTOR_DB_PATH,
+)
 from darukaa_assignment.knowledge.sources import SOURCE_CATALOG
 
 DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "knowledge_base"
@@ -154,7 +160,7 @@ def insert_chunks_into_vector_db(chunks: list[dict[str, str]]) -> list[dict[str,
 
     client = chromadb.PersistentClient(path=str(Path(VECTOR_DB_PATH)))
     collection = client.get_or_create_collection(name=VECTOR_COLLECTION_NAME)
-    collection.add(documents=documents, metadatas=metadatas, ids=ids)
+    collection.upsert(documents=documents, metadatas=metadatas, ids=ids)
     return chunks
 
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parents[2]
 
 DATABASE_PATH = os.getenv("DATABASE_PATH", str(BASE_DIR / "data" / "darukaa.db"))
 VECTOR_DB_PATH = os.getenv("VECTOR_DB_PATH", str(BASE_DIR / "data" / "vector_store"))

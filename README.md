@@ -51,12 +51,17 @@ Stores recommendation outputs and their source title / URL.
    uv sync
    ```
 
-3. Start the API:
+3. Build or refresh the local knowledge index from the downloaded files:
+   ```bash
+   uv run python -c "from darukaa_assignment.knowledge.documents import ingest_all_documents; print(len(ingest_all_documents()))"
+   ```
+
+4. Start the API:
    ```bash
    uv run python -m darukaa_assignment.main
    ```
 
-4. Or run the UI:
+5. Or run the UI:
    ```bash
    uv run streamlit run src/darukaa_assignment/ui/streamlit_app.py
    ```
@@ -82,6 +87,8 @@ This project is structured for a GitHub Actions workflow that can:
 ## 5. Knowledge base
 
 The project uses a document-driven knowledge base composed of real biodiversity, soil, climate, and land-use sources. These source references are tracked in the repository metadata and should be used as evidence for recommendations.
+
+The ingestion command is idempotent: it reads local files under `data/knowledge_base/`, chunks them, embeds them locally, and upserts metadata-rich records into `data/vector_store/`. The `/chat` endpoint retrieves those records and returns both a structured recommendation and the supporting evidence excerpts.
 
 ## 6. Notes
 
