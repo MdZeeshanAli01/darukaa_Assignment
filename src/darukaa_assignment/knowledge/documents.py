@@ -13,7 +13,7 @@ from sentence_transformers import SentenceTransformer
 from darukaa_assignment.config import CHUNK_OVERLAP, CHUNK_SIZE, MODEL_NAME, VECTOR_COLLECTION_NAME, VECTOR_DB_PATH
 from darukaa_assignment.knowledge.sources import SOURCE_CATALOG
 
-DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "knowledge_base"
+DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "knowledge_base"
 
 
 def ensure_knowledge_base_dirs() -> None:
@@ -40,9 +40,16 @@ def save_source_manifest() -> None:
 
 def read_metadata_manifest() -> list[dict[str, str]]:
     manifest_path = DATA_DIR / "json" / "source_manifest.json"
-    if not manifest_path.exists():
-        save_source_manifest()
-    return json.loads(manifest_path.read_text(encoding="utf-8"))
+    if manifest_path.exists():
+        return json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    metadata_files = sorted((DATA_DIR / "json").glob("*.json"))
+    records: list[dict[str, str]] = []
+    for file_path in metadata_files:
+        if file_path.name == "source_manifest.json":
+            continue
+        records.append(json.loads(file_path.read_text(encoding="utf-8")))
+    return records
 
 
 def extract_pdf_text(pdf_path: str | Path) -> str:
@@ -55,6 +62,15 @@ def extract_pdf_text(pdf_path: str | Path) -> str:
             parts.append(text)
     document.close()
     return "\n".join(parts)
+
+
+def extract_html_text(html_path: str | Path) -> str:
+    raw_html = Path(html_path).read_text(encoding="utf-8", errors="ignore")
+    soup = BeautifulSoup(raw_html, "html.parser")
+    for tag in soup(["script", "style", "noscript"]):
+        tag.decompose()
+    text = soup.get_text(separator="\n", strip=True)
+    return re.sub(r"\n{3,}", "\n\n", text)
 
 
 def extract_webpage_text(url: str) -> str:
@@ -80,12 +96,17 @@ def build_chunks_from_metadata(metadata: dict[str, str], source_root: Path | Non
     source_root = source_root or DATA_DIR
     local_file = source_root / "pdfs" / metadata.get("local_file_name", "")
     if not local_file.exists():
-        return []
-
-    if metadata.get("doc_type", "").lower() in {"pdf"}:
-        text = extract_pdf_text(local_file)
+        if metadata.get("doc_type", "").lower() in {"pdf"}:
+            return []
+        try:
+            text = extract_webpage_text(metadata["url"])
+        except Exception:
+            return []
     else:
-        text = extract_webpage_text(metadata["url"])
+        if metadata.get("doc_type", "").lower() in {"pdf"}:
+            text = extract_pdf_text(local_file)
+        else:
+            text = extract_html_text(local_file)
 
     chunks = chunk_text(text)
     records: list[dict[str, str]] = []
