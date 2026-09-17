@@ -1,13 +1,16 @@
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class SourceInfo(BaseModel):
     title: str
+    source_org: str = Field(default="unknown")
     url: str
+    year: str | None = None
+    domain: str | None = None
 
 
 class Recommendation(BaseModel):
@@ -18,3 +21,4 @@ class Recommendation(BaseModel):
     time_horizon: str
     confidence: str
     source: SourceInfo
+    supporting_sources: List[SourceInfo] = Field(default_factory=list)

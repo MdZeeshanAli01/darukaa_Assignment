@@ -1,8 +1,16 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
+import httpx
+import fitz
+from bs4 import BeautifulSoup
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from sentence_transformers import SentenceTransformer
+
+from darukaa_assignment.config import CHUNK_OVERLAP, CHUNK_SIZE, MODEL_NAME, VECTOR_COLLECTION_NAME, VECTOR_DB_PATH
 from darukaa_assignment.knowledge.sources import SOURCE_CATALOG
 
 DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "knowledge_base"
@@ -28,3 +36,113 @@ def save_source_manifest() -> None:
         for source in SOURCE_CATALOG
     ]
     manifest_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def read_metadata_manifest() -> list[dict[str, str]]:
+    manifest_path = DATA_DIR / "json" / "source_manifest.json"
+    if not manifest_path.exists():
+        save_source_manifest()
+    return json.loads(manifest_path.read_text(encoding="utf-8"))
+
+
+def extract_pdf_text(pdf_path: str | Path) -> str:
+    pdf_file = Path(pdf_path)
+    document = fitz.open(str(pdf_file))
+    parts: list[str] = []
+    for page in document:
+        text = page.get_text()
+        if text:
+            parts.append(text)
+    document.close()
+    return "\n".join(parts)
+
+
+def extract_webpage_text(url: str) -> str:
+    response = httpx.get(url, timeout=20)
+    response.raise_for_status()
+    soup = BeautifulSoup(response.text, "html.parser")
+    for tag in soup(["script", "style", "noscript"]):
+        tag.decompose()
+    text = soup.get_text(separator="\n", strip=True)
+    return re.sub(r"\n{3,}", "\n\n", text)
+
+
+def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, chunk_overlap: int = CHUNK_OVERLAP) -> list[str]:
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        separators=["\n\n", "\n", ". ", " ", ""],
+    )
+    return splitter.split_text(text)
+
+
+def build_chunks_from_metadata(metadata: dict[str, str], source_root: Path | None = None) -> list[dict[str, str]]:
+    source_root = source_root or DATA_DIR
+    local_file = source_root / "pdfs" / metadata.get("local_file_name", "")
+    if not local_file.exists():
+        return []
+
+    if metadata.get("doc_type", "").lower() in {"pdf"}:
+        text = extract_pdf_text(local_file)
+    else:
+        text = extract_webpage_text(metadata["url"])
+
+    chunks = chunk_text(text)
+    records: list[dict[str, str]] = []
+    for index, chunk in enumerate(chunks):
+        records.append(
+            {
+                "title": metadata.get("title", "unknown"),
+                "source_org": metadata.get("source_org", "unknown"),
+                "url": metadata.get("url", ""),
+                "year": metadata.get("year", ""),
+                "domain": metadata.get("domain", "general"),
+                "doc_type": metadata.get("doc_type", "unknown"),
+                "chunk_index": str(index),
+                "text": chunk,
+            }
+        )
+    return records
+
+
+def embed_chunks(chunks: list[str]) -> list[list[float]]:
+    model = SentenceTransformer(MODEL_NAME)
+    return model.encode(chunks).tolist()
+
+
+def insert_chunks_into_vector_db(chunks: list[dict[str, str]]) -> list[dict[str, str]]:
+    import chromadb
+
+    if not chunks:
+        return []
+
+    documents = [chunk["text"] for chunk in chunks]
+    metadatas = [
+        {
+            "title": chunk["title"],
+            "source_org": chunk["source_org"],
+            "url": chunk["url"],
+            "year": chunk["year"],
+            "domain": chunk["domain"],
+            "doc_type": chunk["doc_type"],
+            "chunk_index": chunk["chunk_index"],
+        }
+        for chunk in chunks
+    ]
+    ids = [f"{chunk['title']}-{chunk['chunk_index']}" for chunk in chunks]
+
+    client = chromadb.PersistentClient(path=str(Path(VECTOR_DB_PATH)))
+    collection = client.get_or_create_collection(name=VECTOR_COLLECTION_NAME)
+    collection.add(documents=documents, metadatas=metadatas, ids=ids)
+    return chunks
+
+
+def ingest_all_documents() -> list[dict[str, str]]:
+    metadata_list = read_metadata_manifest()
+    all_chunks: list[dict[str, str]] = []
+    for metadata in metadata_list:
+        source_chunks = build_chunks_from_metadata(metadata)
+        if source_chunks:
+            all_chunks.extend(source_chunks)
+    insert_chunks_into_vector_db(all_chunks)
+    return all_chunks
