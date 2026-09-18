@@ -95,3 +95,28 @@ The ingestion command is idempotent: it reads local files under `data/knowledge_
 - The structured database is intentionally simple and inspectable.
 - The reasoning layer is rule-based and easy to explain.
 - The vector/RAG layer is designed to retrieve evidence across multiple documents rather than a single text blob.
+
+## 7. Deployment & Live Hosting
+
+This repository includes a ready-to-use [`render.yaml`](file:///e:/nmims/nmims%204%20year/clg%20placement/darukaa_Assignment/render.yaml) blueprint for one-click deployment on [Render](https://render.com).
+
+### Steps to obtain your hosted URLs:
+
+1. **Push your code to GitHub**:
+   ```bash
+   git add .
+   git commit -m "Add SQLite persistence and deployment config"
+   git push origin main
+   ```
+
+2. **Deploy on Render Blueprint**:
+   - Log in to your [Render Dashboard](https://dashboard.render.com).
+   - Click **New +** $\rightarrow$ **Blueprint**.
+   - Connect your GitHub repository (`darukaa_Assignment`).
+   - Render automatically parses `render.yaml` and spins up two services:
+     - **API Service**: `https://<your-app>-api.onrender.com`
+     - **Streamlit UI**: `https://<your-app>-streamlit.onrender.com`
+
+3. **Verify Hosted Endpoints**:
+   - Health check: `GET https://<your-app>-api.onrender.com/health`
+   - Interactive UI: `https://<your-app>-streamlit.onrender.com`

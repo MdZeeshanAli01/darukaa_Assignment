@@ -123,3 +123,59 @@ def test_chat_returns_structured_recommendation(monkeypatch) -> None:
     assert body["status"] == "ok"
     assert body["recommendation"]["source"]["source_org"] == "FAO"
     assert body["evidence"][0]["match_count"] == 1
+
+
+def test_sqlite_persistence_on_chat_endpoint(monkeypatch) -> None:
+    from darukaa_assignment.db.database import get_connection
+
+    recommendation = Recommendation(
+        recommendation="Implement agroforestry buffers.",
+        mechanism="Tree roots retain soil structure.",
+        impacted_metrics=["soc", "land_use"],
+        expected_change="Increased carbon.",
+        time_horizon="long-term",
+        confidence="high",
+        source={
+            "title": "FAO Soil Report",
+            "source_org": "FAO",
+            "url": "https://fao.org/soil",
+            "year": "2017",
+            "domain": "soil",
+        },
+    )
+    grouped_sources = [{
+        "title": "FAO Soil Report",
+        "source_org": "FAO",
+        "url": "https://fao.org/soil",
+        "year": "2017",
+        "domain": "soil",
+        "matches": ["soil evidence"],
+    }]
+    monkeypatch.setattr(routes, "build_recommendation", lambda message, metrics: (recommendation, grouped_sources))
+
+    session_id = "test-sqlite-session"
+    client = TestClient(app)
+    response = client.post(
+        "/chat",
+        json={
+            "session_id": session_id,
+            "message": "Persist test",
+            "metrics": {
+                "soc": 1.2,
+                "ph": 6.8,
+                "rainfall": 750,
+                "land_use": "pasture",
+                "region": "Midwest",
+            },
+        },
+    )
+    assert response.status_code == 200
+
+    with get_connection() as conn:
+        metrics_row = conn.execute("SELECT * FROM land_metrics WHERE region = 'Midwest'").fetchone()
+        assert metrics_row is not None
+        assert metrics_row["soc"] == 1.2
+
+        rec_row = conn.execute("SELECT * FROM recommendations WHERE session_id = ?", (session_id,)).fetchone()
+        assert rec_row is not None
+        assert "agroforestry buffers" in rec_row["recommendation"]
